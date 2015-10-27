@@ -1,0 +1,260 @@
+# Time-varying regression parameters for load estimation
+# Load the measured daily values 
+
+```{r loadData}
+# Location sample data
+streamgage    <- '03150000'
+constituent   <- 'NO23'
+
+# Read in daily values of measured concentration
+
+load(paste0('./data/siteConstituent/',streamgage,
+            '/',constituent,'/sdfrm.RData'))
+```
+
+```{r eval=FALSE}
+dailyMeasConc <- read.table(paste0('c:/Home/Projects/LoadEstimation/Data/',
+                                   pathSubMea,'/dailyMeasConc.csv'),
+                            header = TRUE, sep=',',stringsAsFactors = FALSE)
+
+qqnorm(dailyMeasConc$wq_value,xlab='Normal Quantiles',
+       ylab=paste0('Sample ',constituent,' Quantiles'), cex.main= 0.8,
+       main=paste0('Normality Assessment for ',constituent,
+                   ' concentrations at streamgage ',streamgage),
+       col='blue', pch=16, cex = 0.5)
+
+qqline(dailyMeasConc$wq_value, col='red', lty='dashed')
+
+
+# pathSubSam  <- paste('StaNumber/03271601/NO23');
+# pathSubSam  <- paste('StaNumber/04197100/NO23');
+# pathSubSam  <- paste('StaNumber/05554500/NO23');
+
+
+
+# Indentify unique strategies, frequencies, furloughs, and repetitions
+uniqStrategy     <- unique(sdfrm$Strategy);
+uniqFrequency    <- unique(sdfrm$Frequency);
+uniqFurlough     <- unique(sdfrm$Furlough); # ndx <- which(uniqFurlough=="00"); uniqFurlough[ndx] = "N00";
+uniqRepetition   <- unique(sdfrm$Repetition);
+
+# Select sample set
+ii <- 4; # Strategy index of {"H8070" "L80"   "S"     "U"} 
+jj <- 3; # Frequency index of {6, 12, 24, 52}
+kk <- 1; # Furlough index of {"00"  "E40" "M40" "T40"}
+ll <- 1; # Repetition index of {1,2,...10}
+
+for (ll in 1:10){
+  # ID unique sample data sets
+  strat <- uniqStrategy[ii];    
+  freqy <- uniqFrequency[jj];   
+  frlgh <- uniqFurlough[kk];    
+  rpttn <- uniqRepetition[ll];  
+  
+  # # #
+  # decay controls the exponential decline in weights
+  decay = 3 # Smaller magnitudes correspond to faster decay
+  # Plot samples and (scaled) weight function for 4 sample frequencies
+  par(mfcol=c(2,2), mar = c(5, 4, 2, 2) + 0.1 )  
+  # The 1:4 loop range corresponds to the number of sampling frequencies 
+  for (i in 1:4){
+    sdfrmTrn     <- subset(sdfrm,subset=c(Strategy==strat & 
+                                              Frequency==uniqFrequency[i] & 
+                                              Furlough==frlgh & Repetition==rpttn))
+    
+    plot(sdfrmTrn$DatePSXlt,log10(sdfrmTrn$wq_value), col='blue', pch=16, 
+         cex=0.5, xlab='Sample Date', ylab='SSC, log10 Units', 
+         sub=paste0(as.character(uniqFrequency[i]),' Samples per year'), 
+         cex.sub=0.75)
+    # Print title above first plot
+    if (i == 1){
+          title(paste0(sdfrmTrn$ParmCode[1],' Concentrations at Streamgage ',
+                 sdfrmTrn$StaNumber[1],'\n for Strat. ',strat,
+                 ', Furlo. ',frlgh,', and Rep. ',rpttn,' with blue dots'),
+                cex.main=0.75)
+    }
+    # Print rest of title above third plot
+    if (i == 3){
+      title(paste0('Weight function, green line, with decay = ',decay), cex.main=0.75)
+    }
+    
+    par(new = TRUE)
+    # yrSpan is half the time span in years  
+    yrSpan <- 10
+    plot(median(sdfrmTrn$DatePSXlt)+3600*24*seq(-yrSpan*365,yrSpan*365),
+          max(log10(sdfrmTrn$wq_value)) * exp(-1/(decay*365/uniqFrequency[i]) * 
+                                                  abs(seq(-yrSpan*365,yrSpan*365))), 
+          axes=FALSE, bty = 'n', xlab="", ylab="", col='green', type='l')
+    mtext("Weight", side=4, line = 0, cex=0.8)
+  }
+  
+  
+#   par(mfcol=c(1,1), mar = c(5, 4, 2, 2) + 0.1)
+#   # plot the weight function
+#   plot(median(sdfrmTrn$DatePSXlt)+3600*24*seq(-10*365,10*365),
+#        exp(-1/(decay*365/uniqFrequency[i])*abs(seq(-10*365,10*365))), 
+#        col='grey', type='l',xlab='Year', ylab='Weight')
+#   for (j in seq(1,length(sdfrmTrn$DatePSXlt),by=50)){
+#     lines(sdfrmTrn$DatePSXlt[j]+3600*24*seq(-10*365,10*365),
+#           exp(-1/(decay*365/sdfrmTrn$Frequency[j])*abs(seq(-10*365,10*365))), 
+#           col='green', type='l',xlab='Year', ylab='Weight')
+#   }
+  
+  # yrSpan is half the time span in years
+  weight06 <- exp(-1/(decay*365/uniqFrequency[1])*abs(seq(-yrSpan/4*365,yrSpan/4*365)))
+  weight12 <- exp(-1/(decay*365/uniqFrequency[2])*abs(seq(-yrSpan/4*365,yrSpan/4*365)))
+  weight24 <- exp(-1/(decay*365/uniqFrequency[3])*abs(seq(-yrSpan/4*365,yrSpan/4*365)))
+  weight52 <- exp(-1/(decay*365/uniqFrequency[4])*abs(seq(-yrSpan/4*365,yrSpan/4*365)))
+
+  par(mfrow=c(1,1))
+  plot(seq(-yrSpan/4*365,yrSpan/4*365), weight06,
+       type='l',col='black', xlab='Time, in Days from Sample', 
+       ylab='Weights', axes = FALSE, cex.main = 0.9,
+       main=paste0('Weight Function with Decay Rate of ',
+           format(decay,digits=3),' by Sampling Frequency'))
+  #
+  axis(side=1, at = c(-2*365, -365, -90, 0, 90, 365, 2*365))
+  axis(side=2, at = seq(0, 1, 0.2))
+  
+  lines(seq(-yrSpan/4*365,yrSpan/4*365), weight12, col='green')
+  lines(seq(-yrSpan/4*365,yrSpan/4*365), weight24, col='blue')
+  lines(seq(-yrSpan/4*365,yrSpan/4*365), weight52, col='red')
+  legend('topleft',legend=c(' 6 Samples per year','12 Samples per year',
+                            '24 Samples per year','52 Samples per year'),
+         col=c('black','green','blue','red'), cex=0.7,
+         lty='solid')
+  abline(v=0, lty='dashed', col='grey')
+  box()
+  
+  # Weight dataframe
+  wtdf           <- as.data.frame(exp(-1/(decay*365/freqy) * 
+                                       abs(seq(-7300,7300, 1))))
+  colnames(wtdf) <- paste0('regWt') 
+  # 
+  # Subset full data for test conditions 
+  sdfrmTrn     <- subset(sdfrm,subset=c(Strategy==strat & Frequency==freqy & 
+                                          Furlough==frlgh & Repetition==rpttn))
+  # Initialize parameter vectors
+  b1 <- rep(NA,nrow(sdfrmTrn))
+  #
+  
+  # Create de-meaned concentrations and flows to remove intercept
+  sdfrmTrn$zlogWq_value <- sdfrmTrn$logWq_value - mean(sdfrmTrn$logWq_value)
+  sdfrmTrn$zlogDflow    <- sdfrmTrn$logDflow    - mean(sdfrmTrn$logDflow)
+  #
+  for (i in 1:nrow(sdfrmTrn)) {
+    # update the date index
+    wtdf$Date     <-
+      as.Date(seq(-7300,7300,by = 1), origin = sdfrmTrn$Date[i])
+    # Merge data to get weights
+    sdfrmTrnWt    <- merge(sdfrmTrn, wtdf, by = 'Date')
+    #
+    lm1 <- rlm(sdfrmTrnWt$zlogWq_value ~ 0 + sdfrmTrnWt$zlogDflow,
+              weight = sdfrmTrnWt$regWt)
+    
+    # b0[i] <- as.numeric(lm1$coefficients[1])
+    b1[i] <- as.numeric(lm1$coefficients[1])
+  }
+  # Plot time-varying slope of log10 flow
+  plot(sdfrmTrnWt$Date, b1, pch='.', col='blue',
+       xlab='Year', ylab='Slope of log Flow',
+       main=paste0('Relation between log Flow and ',sdfrmTrnWt$ParmCode[1],
+                   ' at Streamgage ',sdfrmTrnWt$StaNumber[1]), cex=0.8)
+  # Plot slope
+  lm1 <- rlm(sdfrmTrnWt$zlogWq_value ~ 0 + sdfrmTrnWt$zlogDflow)
+  # abline(h=as.numeric(lm1$coefficients[2]), col='blue', lty='solid')
+  abline(h=as.numeric(lm1$coefficients[1]), col='blue' , lty='solid')
+  
+  abline(h=0, col='grey', lty='dashed')
+  seB1 <- sd(lm1$residuals)/(sd(sdfrmTrnWt$zlogDflow) * 
+                               sqrt(length(sdfrmTrnWt$zlogDflow)-1))
+  
+  abline(h=as.numeric(lm1$coefficients[1])+1.96*seB1, 
+         col='blue', lty='dashed')
+  abline(h=as.numeric(lm1$coefficients[1])-1.96*seB1, 
+         col='blue', lty='dashed')
+  
+  # seB0 <- sd(lm1$residuals) * sqrt(1/nrow(sdfrmTrnWt) + 
+  #                                    mean(sdfrmTrnWt$logDflow)^2 /
+  #                                    sum( (sdfrmTrnWt$logDflow -
+  #                                          mean(sdfrmTrnWt$logDflow))^2))
+  # abline(h=as.numeric(lm1$coefficients[1])+1.96*seB0,
+  #        col='red', lty='dashed')
+  # abline(h=as.numeric(lm1$coefficients[1])-1.96*seB0,
+  #        col='red', lty='dashed')
+  
+  # import wqtruth by water year data
+  file <- 'wqtruth_wyear.txt'; 
+  # Create sample dataframe (sdfrm)
+  targetWyearLoads    <- read.table(paste(path,file,sep=""),sep='\t',header=TRUE);
+  # 
+  # Read in daily values of measured concentration
+  dirName <- paste0(sdfrmTrnWt$ParmCode[1],'_',sdfrmTrnWt$StaNumber[1])
+  
+  dailyMeasConc <- read.table(paste0('c:/Home/Projects/LoadEstimation/Data/',
+                                     dirName,'/dailyMeasConc.csv'),
+                              header = TRUE, sep=',',stringsAsFactors = FALSE)
+  
+  qqnorm((dailyMeasConc$wq_value))
+  qqline((dailyMeasConc$wq_value))
+  
+  
+  # Plot complete time series
+  plot(as.Date(dailyMeasConc$Date),
+       log10(dailyMeasConc$wq_value),type='l',col='blue',
+       xlab='Year', ylab='log_10 SSC, mg/L', cex.main=0.9,
+       main=paste0('Suspended Sediment Concentrations at Streamgage ',
+                   sdfrmTrnWt$StaNumber[1],' in Repetition ',l))
+  
+  # Plot sample time series used to estimate time-varying regression
+  points(sdfrmTrnWt$Date, log10(sdfrmTrnWt$wq_value), col='red',
+         pch=16, cex=0.5)
+  
+  # 
+  fLinIntrp <- approxfun(x=sdfrmTrnWt$Date, y=b1, method='linear', rule=2)
+  # These are the interpolated betas
+  b1Intrp   <- fLinIntrp(as.Date(dailyMeasConc$Date))
+  # Compute de-meaned daily log10 flows in period of record with mean based on sample
+  zlogDflowPoR <- dailyMeasConc$logDflow - mean(sdfrmTrn$logDflow)
+  # Apply beta coefficients to estimate concentration
+  loqWq_vryPrdPoR <- b1Intrp * zlogDflowPoR + mean(sdfrmTrn$logWq_value)
+  # Plot log concentrations
+  lines(as.Date(dailyMeasConc$Date), loqWq_vryPrdPoR, col='orange')
+  #
+  # Compute and plot the fixed parameter flows
+  logWq_fxdPrdPoR <- as.numeric(lm1$coefficients) * 
+    zlogDflowPoR + mean(sdfrmTrn$logWq_value)
+  
+  lines(as.Date(dailyMeasConc$Date), logWq_fxdPrdPoR, col='cyan')
+  
+  # Compute residuals for fixed parameter analysis
+  logQw_fxdRsdPoR <- log10(dailyMeasConc$wq_value) - logWq_fxdPrdPoR
+  # Compute residuals for time-varying parameter analysis
+  logQw_vryRsdPoR <- log10(dailyMeasConc$wq_value) - loqWq_vryPrdPoR
+  
+  par(mar=c(5, 4, 4, 2) + 0.1)
+  boxplot(cbind(logQw_fxdRsdPoR,logQw_vryRsdPoR),
+          names=c('Fixed','Time Varying'),
+          ylab='Concentration Residuals, in log10 Units',
+          xlab='Parameter Estimation Approach',
+          main=paste0('Streamgage ',sdfrmTrnWt$StaNumber[1],
+                      ' Residual Distributions \nfor Concentrations of ',
+                      sdfrmTrnWt$ParmCode[1],
+                      ' in repetition ',l), cex=0.9)
+  abline(h=0, col='red', lty='dashed')
+  
+  logQw_vryRsdPoRrmse <- sqrt(var(logQw_vryRsdPoR) + mean(logQw_vryRsdPoR)^2)
+  logQw_fxdRsdPoRrmse <- sqrt(var(logQw_fxdRsdPoR) + mean(logQw_fxdRsdPoR)^2)
+  
+  print(paste0('The RMSE of the fixed-parameter model is ',
+               format(logQw_fxdRsdPoRrmse, digit=5),' and '));
+  
+  print(paste0('the RMSE of the time-varying parameter model is ',
+               format(logQw_vryRsdPoRrmse, digit=5)));
+  
+  print(paste0('resulting in a ',
+               format((logQw_vryRsdPoRrmse-logQw_fxdRsdPoRrmse)/
+                        logQw_fxdRsdPoRrmse*100,digit=3),
+               '% change relative to the fixed parameter model.'))
+}
+```
